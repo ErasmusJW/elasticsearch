@@ -38,6 +38,10 @@ import org.mockito.ArgumentCaptor;
 import java.util.HashSet;
 import java.util.function.Consumer;
 
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -174,6 +178,51 @@ public class TransportWriteActionTests extends ESTestCase {
         writeReplicaResult.respond(listener);
         assertNull(listener.response);
         assertNotNull(listener.failure);
+    }
+
+    public void testConcurrentWriteReplicaResultCompletion() throws InterruptedException {
+        IndexShard replica = mock(IndexShard.class);
+        when(replica.getTranslogDurability()).thenReturn(Translog.Durability.ASYNC);
+        TestRequest request = new TestRequest();
+        request.setRefreshPolicy(RefreshPolicy.WAIT_UNTIL);
+        TransportWriteAction.WriteReplicaResult<TestRequest> replicaResult = new TransportWriteAction.WriteReplicaResult<>(
+            request, new Translog.Location(0, 0, 0), null, replica, logger);
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        Runnable waitForBarrier = () -> {
+            try {
+                barrier.await();
+            } catch (InterruptedException | BrokenBarrierException e) {
+                throw new AssertionError(e);
+            }
+        };
+        CountDownLatch completionLatch = new CountDownLatch(1);
+        threadPool.generic().execute(() -> {
+            waitForBarrier.run();
+            replicaResult.respond(new ActionListener<TransportResponse.Empty>() {
+                @Override
+                public void onResponse(TransportResponse.Empty empty) {
+                    completionLatch.countDown();
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    completionLatch.countDown();
+                }
+            });
+        });
+        if (randomBoolean()) {
+            threadPool.generic().execute(() -> {
+                waitForBarrier.run();
+                replicaResult.onFailure(null);
+            });
+        } else {
+            threadPool.generic().execute(() -> {
+                waitForBarrier.run();
+                replicaResult.onSuccess(false);
+            });
+        }
+
+        assertTrue(completionLatch.await(30, TimeUnit.SECONDS));
     }
 
     private class TestAction extends TransportWriteAction<TestRequest, TestRequest, TestResponse> {
