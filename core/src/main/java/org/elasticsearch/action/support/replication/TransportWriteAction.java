@@ -122,6 +122,7 @@ public abstract class TransportWriteAction<
          * Respond if the refresh has occurred and the listener is ready. Always called while synchronized on {@code this}.
          */
         protected void respondIfPossible(Exception ex) {
+            assert Thread.holdsLock(this);
             if (finishedAsyncActions && listener != null) {
                 if (ex == null) {
                     super.respond(listener);
@@ -165,7 +166,7 @@ public abstract class TransportWriteAction<
         }
 
         @Override
-        public void respond(ActionListener<TransportResponse.Empty> listener) {
+        public synchronized void respond(ActionListener<TransportResponse.Empty> listener) {
             this.listener = listener;
             respondIfPossible(null);
         }
@@ -174,6 +175,7 @@ public abstract class TransportWriteAction<
          * Respond if the refresh has occurred and the listener is ready. Always called while synchronized on {@code this}.
          */
         protected void respondIfPossible(Exception ex) {
+            assert Thread.holdsLock(this);
             if (finishedAsyncActions && listener != null) {
                 if (ex == null) {
                     super.respond(listener);
@@ -184,7 +186,7 @@ public abstract class TransportWriteAction<
         }
 
         @Override
-        public void onFailure(Exception ex) {
+        public synchronized void onFailure(Exception ex) {
             finishedAsyncActions = true;
             respondIfPossible(ex);
         }
