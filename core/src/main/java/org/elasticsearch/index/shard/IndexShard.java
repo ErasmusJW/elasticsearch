@@ -449,7 +449,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     public void relocated(String reason) throws IllegalIndexShardStateException, InterruptedException {
         assert shardRouting.primary() : "only primaries can be marked as relocated: " + shardRouting;
         try {
-            indexShardOperationsLock.blockOperations(30, TimeUnit.MINUTES, () -> {
+            indexShardOperationsLock.blockOperations(10, TimeUnit.MINUTES, () -> {
                 // no shard operation locks are being held here, move state from started to relocated
                 assert indexShardOperationsLock.getActiveOperationsCount() == 0 :
                     "in-flight operations in progress while moving shard state to relocated";
